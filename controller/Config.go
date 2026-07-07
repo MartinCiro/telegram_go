@@ -15,6 +15,7 @@ type Config struct {
 	TelegramToken string
 	TelegramChat  string
 	AllowedUsers  []int64
+	ShellAliases  map[string]string
 	Log           *Log
 }
 
@@ -37,6 +38,7 @@ func NewConfig() *Config {
 	}
 
 	allowedUsers := parseAllowedUsers(os.Getenv("ALLOWED_USERS"))
+	shellAliases := parseShellAliases(os.Getenv("SHELL_ALIASES"))
 
 	// Añadir TELEGRAM_CHAT automáticamente a la lista blanca
 	if chatID != "" {
@@ -52,8 +54,47 @@ func NewConfig() *Config {
 		TelegramToken: token,
 		TelegramChat:  chatID,
 		AllowedUsers:  allowedUsers,
+		ShellAliases:  shellAliases,
 		Log:           NewLog(),
 	}
+}
+
+func parseShellAliases(raw string) map[string]string {
+	aliases := make(map[string]string)
+
+	if strings.TrimSpace(raw) == "" {
+		return aliases
+	}
+
+	parts := strings.Split(raw, ",")
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+
+		kv := strings.SplitN(part, "=", 2)
+		if len(kv) != 2 {
+			fmt.Printf("⚠️  SHELL_ALIASES: formato inválido '%s' (esperado: name=command)\n", part)
+			continue
+		}
+
+		name := strings.TrimSpace(kv[0])
+		command := strings.TrimSpace(kv[1])
+
+		if name == "" || command == "" {
+			fmt.Printf("⚠️  SHELL_ALIASES: nombre o comando vacío en '%s'\n", part)
+			continue
+		}
+
+		aliases[name] = command
+	}
+
+	if len(aliases) > 0 {
+		fmt.Printf("✅ Cargados %d shell aliases\n", len(aliases))
+	}
+
+	return aliases
 }
 
 // containsInt64 verifica si un slice contiene un valor

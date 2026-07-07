@@ -2,3 +2,5 @@ TELEGRAM_TOKEN=Token_bot_telegram
 TELEGRAM_CHAT=id_usuario
 
 ALLOWED_USERS=lista_usuarios_habilitados
+
+SHELL_ALIASES=alias_separado_coma

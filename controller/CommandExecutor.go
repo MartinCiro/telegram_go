@@ -33,14 +33,17 @@ type CommandExecutor struct {
 	MaxOutputLength int
 	// Logger opcional (puede ser nil)
 	Log *Log
+	// Acceso a shell aliases
+	config *Config
 }
 
 // NewCommandExecutor crea un executor con valores por defecto
-func NewCommandExecutor(log *Log) *CommandExecutor {
+func NewCommandExecutor(config *Config) *CommandExecutor {
 	return &CommandExecutor{
 		DefaultTimeout:  30 * time.Second,
 		MaxOutputLength: 4000,
-		Log:             log,
+		Log:             config.Log,
+		config:          config,
 	}
 }
 
@@ -55,7 +58,6 @@ func (e *CommandExecutor) Execute(command string) *CommandResult {
 func (e *CommandExecutor) ExecuteContext(ctx context.Context, command string) *CommandResult {
 	result := &CommandResult{}
 
-	// Validación temprana
 	command = strings.TrimSpace(command)
 	if command == "" {
 		result.Err = fmt.Errorf("comando vacío")
@@ -63,26 +65,28 @@ func (e *CommandExecutor) ExecuteContext(ctx context.Context, command string) *C
 		return result
 	}
 
+	// ← NUEVO: Normalizar primera letra a minúscula
+	if len(command) > 0 {
+		firstChar := strings.ToLower(string(command[0]))
+		command = firstChar + command[1:]
+	}
+
 	if e.Log != nil {
 		e.Log.Comentario("INFO", fmt.Sprintf("Ejecutando: %s", command))
 	}
 
-	// Construir comando según el SO
 	cmd := e.buildCommand(command)
 
-	// Capturar stdout + stderr combinados
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
 
-	// Medir duración
 	start := time.Now()
 	err := cmd.Run()
 	result.Duration = time.Since(start)
 
 	result.Output = e.truncateOutput(out.String())
 
-	// Analizar resultado
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			result.Timeout = true
@@ -111,7 +115,27 @@ func (e *CommandExecutor) buildCommand(command string) *exec.Cmd {
 	if runtime.GOOS == "windows" {
 		return exec.Command("cmd", "/C", command)
 	}
-	return exec.Command("sh", "-c", command)
+
+	// Si no hay aliases, ejecutar directamente
+	if len(e.config.ShellAliases) == 0 {
+		return exec.Command("sh", "-c", command)
+	}
+
+	// Construir loader de alias
+	var sb strings.Builder
+	sb.WriteString("shopt -s expand_aliases\n")
+
+	for name, cmd := range e.config.ShellAliases {
+		// Escapar comillas simples en el comando
+		escapedCmd := strings.ReplaceAll(cmd, "'", "'\"'\"'")
+		sb.WriteString(fmt.Sprintf("alias %s='%s'\n", name, escapedCmd))
+	}
+
+	// Añadir el comando a ejecutar
+	sb.WriteString("\n")
+	sb.WriteString(command)
+
+	return exec.Command("sh", "-c", sb.String())
 }
 
 // truncateOutput limita el tamaño del output para no saturar Telegram

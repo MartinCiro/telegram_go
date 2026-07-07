@@ -22,7 +22,7 @@ func main() {
 
 	// 2️⃣ Instanciar servicios
 	networkService := controller.NewNetworkService()
-	executor := controller.NewCommandExecutor(config.Log)
+	executor := controller.NewCommandExecutor(config)
 	handler := controller.NewBotHandler(networkService, executor, config.Log)
 
 	config.Log.InicioProceso("Bot Telegram")
