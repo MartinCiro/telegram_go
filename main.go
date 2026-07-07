@@ -44,7 +44,12 @@ func main() {
 		{Command: "start", Description: "Información completa del bot"},
 		{Command: "estado", Description: "Ver IPs y red actual"},
 		{Command: "comando", Description: "Ejecutar comando del sistema"},
-		{Command: "ayuda", Description: "Lista de comandos"},
+		{Command: "ayuda", Description: "ℹ️Lista de comandos"},
+
+		{Command: "icono_home", Description: "🏠 Inicio"},
+		{Command: "icono_status", Description: "ℹ️ Lista de comandos"},
+		{Command: "icono_bash", Description: "💻 Terminal"},
+		{Command: "icono_help", Description: "❓ Ayuda"},
 	}
 	setCmd := tgbotapi.NewSetMyCommands(commands...)
 	if _, err := bot.Request(setCmd); err != nil {
@@ -98,7 +103,6 @@ func main() {
 			if update.CallbackQuery != nil {
 				cb := update.CallbackQuery
 
-				fmt.Printf("🔍 CALLBACK RECIBIDO: Data='%s'\n", cb.Data)
 				config.Log.Comentario("DEBUG", fmt.Sprintf("Callback data: '%s'", cb.Data))
 
 				// Responder al callback
@@ -108,11 +112,7 @@ func main() {
 				}
 
 				// Procesar el comando
-				response := handler.Handle(cb.Data)
-
-				// DEBUG: Ver qué retornó el handler
-				fmt.Printf("📝 RESPONSE: Text='%s', HasInline=%v, Buttons=%d\n",
-					response.Text[:50], response.HasInlineButtons(), len(response.Buttons))
+				response := handler.Handle(cb.Message.Chat.ID, cb.Data)
 
 				// Editar el mensaje
 				edit := tgbotapi.NewEditMessageText(
@@ -142,7 +142,6 @@ func main() {
 
 					kb := tgbotapi.NewInlineKeyboardMarkup(rows...)
 					edit.ReplyMarkup = &kb
-					fmt.Printf("🔘 Inline keyboard con %d filas\n", len(rows))
 				}
 
 				// Enviar el edit
@@ -167,7 +166,7 @@ func main() {
 			config.Log.Comentario("INFO", fmt.Sprintf("Mensaje de %s: %s",
 				update.Message.From.UserName, update.Message.Text))
 
-			response := handler.Handle(update.Message.Text)
+			response := handler.Handle(update.Message.Chat.ID, update.Message.Text)
 
 			msg := tgbotapi.NewMessage(update.Message.Chat.ID, response.Text)
 			msg.ParseMode = "Markdown"
@@ -189,29 +188,52 @@ func main() {
 				if len(currentRow) > 0 {
 					rows = append(rows, currentRow)
 				}
+
 				msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(rows...)
 			}
 
+			persistentButtons := [][]tgbotapi.KeyboardButton{
+				{
+					tgbotapi.NewKeyboardButton("🏠"),
+					tgbotapi.NewKeyboardButton("❓"),
+					tgbotapi.NewKeyboardButton("💻"),
+					tgbotapi.NewKeyboardButton("ℹ️"),
+				},
+			}
+			persistentKeyboard := tgbotapi.NewReplyKeyboard(persistentButtons...)
+			persistentKeyboard.ResizeKeyboard = true
+
 			// Reply keyboard
 			if response.HasReplyButtons() {
-				var rows [][]tgbotapi.KeyboardButton
+				var extraRows [][]tgbotapi.KeyboardButton
 				var currentRow []tgbotapi.KeyboardButton
 
 				for _, btn := range response.Buttons {
 					if btn.Type == controller.ButtonReply {
 						currentRow = append(currentRow, tgbotapi.NewKeyboardButton(btn.Text))
 						if len(currentRow) == 2 {
-							rows = append(rows, currentRow)
+							extraRows = append(extraRows, currentRow)
 							currentRow = nil
 						}
 					}
 				}
 				if len(currentRow) > 0 {
-					rows = append(rows, currentRow)
+					extraRows = append(extraRows, currentRow)
 				}
-				keyboard := tgbotapi.NewReplyKeyboard(rows...)
-				keyboard.OneTimeKeyboard = true
-				msg.ReplyMarkup = keyboard
+
+				// Combinar: botones persistentes + botones de la respuesta
+				allRows := append(persistentButtons, extraRows...)
+				persistentKeyboard = tgbotapi.NewReplyKeyboard(allRows...)
+				persistentKeyboard.ResizeKeyboard = true
+			}
+
+			if response.ForceReply {
+				msg.ReplyMarkup = tgbotapi.ForceReply{
+					ForceReply: true,
+					Selective:  true,
+				}
+			} else {
+				msg.ReplyMarkup = persistentKeyboard
 			}
 
 			if _, err := bot.Send(msg); err != nil {

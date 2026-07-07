@@ -4,100 +4,287 @@
 
 ### 1. Configuración de variables de entorno
 
-Crea un archivo `.env` basado en `example` con esta estructura:
+Crea un archivo `.env` basado en `.env.example` con esta estructura:
 
 ```bash
-
 # Configuración bot de telegram
-TELEGRAM_TOKEN=Token de bot en telegram
-TELEGRAM_CHAT=id usuario
+TELEGRAM_TOKEN=token_de_tu_bot_en_telegram
+TELEGRAM_CHAT=id_de_chat_para_notificacion_inicial
 ```
 
-### Actualizar dependencias (Solo desarrollo)
+| Variable | Descripción | Obligatorio |
+|----------|-------------|-------------|
+| `TELEGRAM_TOKEN` | Token obtenido de [@BotFather](https://t.me/BotFather) | ✅ Sí |
+| `TELEGRAM_CHAT` | ID numérico del chat donde se enviará la notificación de inicio | ❌ Opcional |
+
+### 2. Instalar dependencias
 
 ```bash
-python -m venv venv; venv\Scripts\activate; pip install pipreqs; pipreqs . --force
+go mod tidy
 ```
 
-### Ejecutar proyecto
+### 3. Ejecutar proyecto
 
 ```bash
-python main.py
+go run main.go
 ```
+
+### 4. Compilar a binario (producción)
+
+```bash
+# Linux/macOS
+go build -o bot-telegram main.go
+
+# Windows
+go build -o bot-telegram.exe main.go
+
+# Compilación cruzada (ej: compilar para Linux desde Windows)
+GOOS=linux GOARCH=amd64 go build -o bot-telegram main.go
+```
+
+---
+
+## 🤖 Funcionalidades del Bot
+
+### Comandos disponibles
+
+| Comando | Descripción |
+|---------|-------------|
+| `/start` | Muestra información completa: IP pública, IP local, red, OS y arquitectura |
+| `/estado` | Muestra solo información de red (IPs y red conectada) |
+| `/comando <cmd>` | Ejecuta un comando del sistema y retorna el resultado |
+| `/comando` | Modo interactivo: pide el comando en el siguiente mensaje |
+| `/ayuda` | Lista de comandos disponibles |
+
+### Botones persistentes (Reply Keyboard)
+
+Siempre visibles en la parte inferior del chat:
+
+| Botón | Equivalente | Acción |
+|-------|-------------|--------|
+| 🏠 | `/icono home` | Muestra información completa (equivale a `/start`) |
+| ❓ | `/icono help` | Muestra ayuda (equivale a `/ayuda`) |
+| 💻 | `/icono bash` | Activa modo comando (pide input en siguiente mensaje) |
+
+### Botones inline (contextuales)
+
+Aparecen debajo de mensajes específicos para acciones rápidas:
+
+- En `/start`: `[📊 Ver Estado] [❓ Ayuda]`
+- En `/ayuda`: `[🏠 Inicio] [📊 Estado]`
+
+### Notificación automática
+
+Al iniciar, el bot envía automáticamente un mensaje al `TELEGRAM_CHAT` configurado con:
+- Estado del sistema
+- IP pública, IP local y red conectada
+
+---
 
 ## 🛠️ Procesos de automatización
 
-### Conversión de archivo *".py"* a ejecutable *".exe"*
+### Compilación multiplataforma
 
 ```bash
-py -m PyInstaller --icon="ruta-absoluta-archivo-ico" ruta-abosulta-main-proyecto
+# Windows
+set GOOS=windows&& set GOARCH=amd64&& go build -o bot.exe main.go
 
-# Ejemplo:
-python -m PyInstaller --icon="vendor/favicon.ico" main.py
+# Linux
+GOOS=linux GOARCH=amd64 go build -o bot main.go
+
+# macOS
+GOOS=darwin GOARCH=amd64 go build -o bot main.go
+
+# ARM (Raspberry Pi)
+GOOS=linux GOARCH=arm64 go build -o bot main.go
 ```
 
-#### 🚀 Opciones de compilación:
+### Ejecución como servicio (Linux)
 
-- `--onefile`: Genera un solo archivo ejecutable
-- `--windowed`: Ejecución sin ventana de terminal
+Crear `/etc/systemd/system/bot-telegram.service`:
 
-> **Nota**: Requiere `pip install pyinstaller pillow` y el reemplazo del key en el archivo helpers (linea 11)
+```ini
+[Unit]
+Description=Bot de Telegram
+After=network.target
 
-🔧 **Herramienta útil**: [Complemento RPA para Firefox](https://addons.mozilla.org/en-US/firefox/addon/rpa/)
+[Service]
+Type=simple
+User=tu_usuario
+WorkingDirectory=/ruta/al/proyecto
+ExecStart=/ruta/al/proyecto/bot
+Restart=always
+RestartSec=10
+EnvironmentFile=/ruta/al/proyecto/.env
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable bot-telegram
+sudo systemctl start bot-telegram
+sudo systemctl status bot-telegram
+```
 
 ---
 
 ## 📂 **Estructura del Proyecto**
 
 ```
-
-/core
-  ├── /controller            # Lógica de negocio
-  │   ├── utils              # Metodos reutilizables o compartidos
-  ├── /plugins               # Carpeta contenedora de los plugins, librerías o ejecutables
-  ├── /vendor                # Contiene archivos temp, imagenes, txt
+go-tel/
+├── main.go                    # Bootstrap: instancia servicios y arranca el bot
+├── go.mod                     # Dependencias del proyecto
+├── go.sum                     # Checksums de dependencias
+├── .env                       # Variables de entorno (no subir a git)
+├── .env.example               # Template de variables de entorno
+├── .gitignore                 # Archivos ignorados
+├── README.md                  # Esta documentación
+├── /controller                # Lógica de negocio (servicios)
+│   ├── Config.go              # Configuración central con defaults
+│   ├── Log.go                 # Sistema de logging thread-safe
+│   ├── NetworkInfo.go         # Servicio: información de red e IPs
+│   ├── CommandExecutor.go     # Servicio: ejecución de comandos del sistema
+│   ├── BotHandler.go          # Orquestador: ruteo de mensajes a servicios
+│   ├── Response.go            # DTO: respuesta estructurada (texto + botones)
+│   └── helpers.go             # Utilidades privadas del paquete
+└── /logs                      # Directorio de logs (autogenerado)
+    ├── /procesos              # Logs de procesos por fecha
+    └── /errores               # Logs de errores por fecha
 ```
 
-## 🔄 Diagrama de Ejecución
+---
+
+## 🔄 Diagrama de Configuración
 
 ```mermaid
 graph TD
-    A[Inicio] --> B[Configurar variables]
-    B --> C{¿Actualizar dependencias?}
-    C -->|Sí| D[Ejecutar pipreqs --force]
-    C -->|No| E[Instalar requirements.txt]
-    D --> F[Ejecutar scraper]
+    A[Inicio] --> B[Crear archivo .env]
+    B --> C[Configurar TELEGRAM_TOKEN]
+    C --> D{¿Notificación inicial?}
+    D -->|Sí| E[Configurar TELEGRAM_CHAT]
+    D -->|No| F[Instalar dependencias]
     E --> F
-    F --> G{¿Compilar a .exe?}
-    G -->|Sí| H[Usar PyInstaller]
-    G -->|No| J[Finalizar]
-    H --> I[Generar ejecutable]
-    I --> J
+    F --> G[go mod tidy]
+    G --> H{¿Desarrollo o Producción?}
+    H -->|Desarrollo| I[go run main.go]
+    H -->|Producción| J[go build -o bot]
+    J --> K[./bot]
+    I --> L[Bot activo]
+    K --> L
 ```
 
-## 🔄 Diagrama del Flujo del Scraper
+---
+
+## 🔄 Diagrama de Flujo del Bot
 
 ```mermaid
 graph TD
-    A[Inicio] --> C{¿Está logeado?}
-    C -->|Sí| D[Capturar No. Post]
-    C -->|No| E[Iniciar sesión]
-    E --> C
-    D --> F{¿Existe en Faiss?}
-    F -->|Sí| G[Leer comentarios]
-    G --> I{¿Existe estado?}
-    I -->|Sí| J[Actualizar]
-    J --> K[Siguiente]
-    I -->|No| K
-    K --> F
-    F -->|No| H[Extraer Datos]
-    H --> Ha{¿Existe en Faiss?}
-    Ha -->|Sí| Hb[No guardar]
-    Hb --> K
-    Ha -->|No| Hc[Cargar en BD]
-    Hc --> K
+    A[Bot inicia] --> B[Cargar Config desde .env]
+    B --> C[Instanciar servicios]
+    C --> D[Autenticar con Telegram API]
+    D --> E[Registrar menú de comandos]
+    E --> F[Obtener info de red]
+    F --> G{¿TELEGRAM_CHAT configurado?}
+    G -->|Sí| H[Enviar notificación inicial]
+    G -->|No| I[Iniciar polling]
+    H --> I
+    
+    I --> J{¿Update recibido?}
+    J -->|CallbackQuery| K[Responder callback]
+    K --> L[Editar mensaje original]
+    L --> J
+    
+    J -->|Message| M{¿Chat en modo comando?}
+    M -->|Sí| N[Ejecutar texto como comando]
+    N --> O[Enviar resultado]
+    O --> J
+    
+    M -->|No| P{¿Qué comando?}
+    P -->|/start| Q[Info completa + botones inline]
+    P -->|/estado| R[Info de red]
+    P -->|/ayuda| S[Lista de comandos]
+    P -->|/comando| T[Activar modo comando]
+    P -->|/comando X| U[Ejecutar comando X]
+    P -->|/icono home| Q
+    P -->|/icono help| S
+    P -->|/icono bash| T
+    P -->|Otro| V[Error: comando no reconocido]
+    
+    Q --> W[Enviar respuesta]
+    R --> W
+    S --> W
+    T --> W
+    U --> W
+    V --> W
+    W --> J
 ```
 
-#### 💡 **Creditos**
+---
+
+## 🔄 Diagrama de Arquitectura (Separación de Responsabilidades)
+
+```mermaid
+graph TB
+    subgraph "main.go (Bootstrap)"
+        A[Instanciar Config]
+        B[Inyectar dependencias]
+        C[Conectar Telegram API]
+        D[Loop de updates]
+    end
+    
+    subgraph "controller/ (Servicios)"
+        E[Config]
+        F[Log]
+        G[NetworkService]
+        H[CommandExecutor]
+        I[BotHandler]
+        J[Response DTO]
+    end
+    
+    subgraph "Telegram API"
+        K[Bot API]
+        L[Updates]
+        M[Messages]
+    end
+    
+    A --> E
+    E --> F
+    B --> G
+    B --> H
+    B --> I
+    I --> G
+    I --> H
+    I --> J
+    D --> L
+    L --> I
+    I --> J
+    J --> M
+    M --> K
+```
+
+---
+
+## 🔒 Seguridad
+
+- **Timeout de comandos**: 30 segundos por defecto (configurable en `CommandExecutor`)
+- **Longitud máxima de output**: 4000 caracteres (evita saturar Telegram)
+- **Logs thread-safe**: escritura concurrente protegida con mutex
+- **Context cancellation**: comandos cancelables vía `context.WithTimeout`
+
+> **⚠️ Nota de seguridad**: El bot ejecuta cualquier comando que reciba. En producción, considera implementar:
+> - Lista blanca de usuarios autorizados
+> - Sandbox de comandos permitidos
+> - Rate limiting
+
+---
+
+## 💡 **Créditos**
 
 [Plantilla base](https://github.com/villalbaluis/arquitectura-bots-python) proporcionada por [Luis Villalba](https://github.com/villalbaluis)
+
+Migración a Go y refactorización de arquitectura: adaptación propia basada en principios de:
+- Single Responsibility Principle (SRP)
+- Dependency Injection
+- Separation of Concerns

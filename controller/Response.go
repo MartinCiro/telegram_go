@@ -17,8 +17,9 @@ type Button struct {
 
 // Response respuesta estructurada del bot
 type Response struct {
-	Text    string
-	Buttons []Button // lista plana de botones
+	Text       string
+	Buttons    []Button // lista plana de botones
+	ForceReply bool     // true si queremos forzar respuesta del usuario
 }
 
 // NewResponse crea una respuesta solo con texto

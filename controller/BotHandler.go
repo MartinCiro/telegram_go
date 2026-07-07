@@ -4,51 +4,73 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
+	"sync"
 )
 
 // BotHandler orquestador que rutea mensajes a los servicios correctos
 type BotHandler struct {
-	network  *NetworkService
-	executor *CommandExecutor
-	log      *Log
+	network         *NetworkService
+	executor        *CommandExecutor
+	log             *Log
+	pendingCommands map[int64]bool
+	mu              sync.Mutex
 }
 
 // NewBotHandler crea un handler con dependencias inyectadas
 func NewBotHandler(network *NetworkService, executor *CommandExecutor, log *Log) *BotHandler {
 	return &BotHandler{
-		network:  network,
-		executor: executor,
-		log:      log,
+		network:         network,
+		executor:        executor,
+		log:             log,
+		pendingCommands: make(map[int64]bool),
 	}
 }
 
 // Handle procesa un mensaje de texto y retorna la respuesta
-func (h *BotHandler) Handle(text string) *Response {
+func (h *BotHandler) Handle(chatID int64, text string) *Response {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return NewResponse("❓ Mensaje vacío")
 	}
 
+	// PRIORIDAD 1: Si el chat está esperando comando
+	h.mu.Lock()
+	waiting := h.pendingCommands[chatID]
+	if waiting {
+		delete(h.pendingCommands, chatID)
+	}
+	h.mu.Unlock()
+
+	if waiting {
+		return h.handleComando(text)
+	}
+
+	// PRIORIDAD 2: Ruteo normal
 	lower := strings.ToLower(text)
 
 	switch {
-	case lower == "/start" || lower == "/inicio":
+	case lower == "/start" || lower == "/inicio" || lower == "🏠":
 		return h.handleStart()
 
-	case lower == "/estado":
+	case lower == "/estado" || lower == "ℹ️":
 		return h.handleEstado()
 
-	case lower == "/ayuda" || lower == "/help":
+	case lower == "/ayuda" || lower == "/help" || lower == "❓":
 		return h.handleAyuda()
+
+	case lower == "/comando" || lower == "💻":
+		h.mu.Lock()
+		h.pendingCommands[chatID] = true
+		h.mu.Unlock()
+
+		resp := NewResponse("💻 Envíame el comando que quieres ejecutar:")
+		resp.ForceReply = true
+		return resp
 
 	case strings.HasPrefix(lower, "/comando "):
 		cmd := strings.TrimPrefix(text, "/comando ")
-		cmd = strings.TrimPrefix(cmd, "/comando")
 		cmd = strings.TrimSpace(cmd)
 		return h.handleComando(cmd)
-
-	case strings.HasPrefix(lower, "/comando"):
-		return NewResponse("❌ Debes especificar un comando. Ejemplo: `/comando ls -la`")
 
 	default:
 		return NewResponse("❓ Comando no reconocido. Usa /ayuda para ver los comandos disponibles.")
@@ -92,11 +114,7 @@ func (h *BotHandler) handleEstado() *Response {
 		info.FormatearParaTelegram(),
 	)
 
-	// ← Asegúrate de que esto esté
-	return NewResponse(text).WithButtons(
-		Button{Text: "/start", Data: "/start", Type: ButtonReply},
-		Button{Text: "/ayuda", Data: "/ayuda", Type: ButtonReply},
-	)
+	return NewResponse(text)
 }
 
 // handleAyuda retorna la lista de comandos disponibles
