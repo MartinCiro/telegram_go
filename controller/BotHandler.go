@@ -23,16 +23,14 @@ func NewBotHandler(network *NetworkService, executor *CommandExecutor, log *Log)
 }
 
 // Handle procesa un mensaje de texto y retorna la respuesta
-func (h *BotHandler) Handle(text string) string {
+func (h *BotHandler) Handle(text string) *Response {
 	text = strings.TrimSpace(text)
 	if text == "" {
-		return "❓ Mensaje vacío"
+		return NewResponse("❓ Mensaje vacío")
 	}
 
-	// Convertir a minúsculas para comparación
 	lower := strings.ToLower(text)
 
-	// Ruteo de comandos
 	switch {
 	case lower == "/start" || lower == "/inicio":
 		return h.handleStart()
@@ -50,22 +48,21 @@ func (h *BotHandler) Handle(text string) string {
 		return h.handleComando(cmd)
 
 	case strings.HasPrefix(lower, "/comando"):
-		return "❌ Debes especificar un comando. Ejemplo: `/comando ls -la`"
+		return NewResponse("❌ Debes especificar un comando. Ejemplo: `/comando ls -la`")
 
 	default:
-		return "❓ Comando no reconocido. Usa /ayuda para ver los comandos disponibles."
+		return NewResponse("❓ Comando no reconocido. Usa /ayuda para ver los comandos disponibles.")
 	}
 }
 
 // handleStart retorna información completa del sistema
-func (h *BotHandler) handleStart() string {
+func (h *BotHandler) handleStart() *Response {
 	if h.log != nil {
 		h.log.Comentario("INFO", "Comando /start ejecutado")
 	}
 
 	info := h.network.ObtenerInfo()
-
-	return fmt.Sprintf(
+	text := fmt.Sprintf(
 		"🤖 *Bot Activo*\n\n"+
 			"📍 *Información de Red:*\n%s\n\n"+
 			"🖥️ *Sistema:*\n"+
@@ -76,38 +73,54 @@ func (h *BotHandler) handleStart() string {
 		runtime.GOOS,
 		runtime.GOARCH,
 	)
+
+	return NewResponse(text).WithButtons(
+		Button{Text: "📊 Ver Estado", Data: "/estado", Type: ButtonInline},
+		Button{Text: "❓ Ayuda", Data: "/ayuda", Type: ButtonInline},
+	)
 }
 
 // handleEstado retorna solo información de red
-func (h *BotHandler) handleEstado() string {
+func (h *BotHandler) handleEstado() *Response {
 	if h.log != nil {
 		h.log.Comentario("INFO", "Comando /estado ejecutado")
 	}
 
 	info := h.network.ObtenerInfo()
-	return fmt.Sprintf(
+	text := fmt.Sprintf(
 		"✅ *Bot en línea*\n\n%s",
 		info.FormatearParaTelegram(),
+	)
+
+	// ← Asegúrate de que esto esté
+	return NewResponse(text).WithButtons(
+		Button{Text: "/start", Data: "/start", Type: ButtonReply},
+		Button{Text: "/ayuda", Data: "/ayuda", Type: ButtonReply},
 	)
 }
 
 // handleAyuda retorna la lista de comandos disponibles
-func (h *BotHandler) handleAyuda() string {
+func (h *BotHandler) handleAyuda() *Response {
 	if h.log != nil {
 		h.log.Comentario("INFO", "Comando /ayuda ejecutado")
 	}
 
-	return "📋 *Comandos disponibles:*\n\n" +
+	text := "📋 *Comandos disponibles:*\n\n" +
 		"• /start o /inicio - Muestra información completa del bot\n" +
 		"• /estado - Ver estado actual e IPs\n" +
 		"• /comando <cmd> - Ejecutar comando del sistema\n" +
 		"• /ayuda - Esta ayuda"
+
+	return NewResponse(text).WithButtons(
+		Button{Text: "🏠 Inicio", Data: "/start", Type: ButtonInline},
+		Button{Text: "📊 Estado", Data: "/estado", Type: ButtonInline},
+	)
 }
 
 // handleComando ejecuta un comando del sistema y retorna el resultado
-func (h *BotHandler) handleComando(command string) string {
+func (h *BotHandler) handleComando(command string) *Response {
 	if command == "" {
-		return "❌ Debes especificar un comando. Ejemplo: `/comando ls -la`"
+		return NewResponse("❌ Debes especificar un comando. Ejemplo: `/comando ls -la`")
 	}
 
 	if h.log != nil {
@@ -115,5 +128,7 @@ func (h *BotHandler) handleComando(command string) string {
 	}
 
 	result := h.executor.Execute(command)
-	return result.FormatForTelegram(command)
+	text := result.FormatForTelegram(command)
+
+	return NewResponse(text)
 }
