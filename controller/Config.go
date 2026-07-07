@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -12,6 +14,7 @@ import (
 type Config struct {
 	TelegramToken string
 	TelegramChat  string
+	AllowedUsers  []int64
 	Log           *Log
 }
 
@@ -33,11 +36,70 @@ func NewConfig() *Config {
 		os.Exit(1)
 	}
 
+	allowedUsers := parseAllowedUsers(os.Getenv("ALLOWED_USERS"))
+
+	// Añadir TELEGRAM_CHAT automáticamente a la lista blanca
+	if chatID != "" {
+		if id, err := strconv.ParseInt(chatID, 10, 64); err == nil {
+			if !containsInt64(allowedUsers, id) {
+				allowedUsers = append(allowedUsers, id)
+				fmt.Printf("✅ TELEGRAM_CHAT (%d) añadido automáticamente a ALLOWED_USERS\n", id)
+			}
+		}
+	}
+
 	return &Config{
 		TelegramToken: token,
 		TelegramChat:  chatID,
+		AllowedUsers:  allowedUsers,
 		Log:           NewLog(),
 	}
+}
+
+// containsInt64 verifica si un slice contiene un valor
+func containsInt64(slice []int64, value int64) bool {
+	for _, v := range slice {
+		if v == value {
+			return true
+		}
+	}
+	return false
+}
+
+func parseAllowedUsers(raw string) []int64 {
+	if strings.TrimSpace(raw) == "" {
+		return nil // nil = sin restricción (permite a todos)
+	}
+
+	var users []int64
+	parts := strings.Split(raw, ",")
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		id, err := strconv.ParseInt(p, 10, 64)
+		if err != nil {
+			fmt.Printf("⚠️  ALLOWED_USERS: ignorando valor inválido '%s'\n", p)
+			continue
+		}
+		users = append(users, id)
+	}
+	return users
+}
+
+// IsUserAllowed verifica si un usuario está en la lista blanca
+// Si la lista está vacía, permite a todos (backward compatible)
+func (c *Config) IsUserAllowed(userID int64) bool {
+	if len(c.AllowedUsers) == 0 {
+		return true // Sin restricción
+	}
+	for _, allowed := range c.AllowedUsers {
+		if allowed == userID {
+			return true
+		}
+	}
+	return false
 }
 
 // GetProjectPath retorna la ruta absoluta del proyecto

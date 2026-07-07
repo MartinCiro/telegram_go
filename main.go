@@ -98,12 +98,32 @@ func main() {
 	go func() {
 		for update := range updates {
 			// ──────────────────────────────────────────────
+			// VALIDACIÓN DE AUTORIZACIÓN
+			// ──────────────────────────────────────────────
+			var userID int64
+			var userName string
+
+			if update.CallbackQuery != nil {
+				userID = update.CallbackQuery.From.ID
+				userName = update.CallbackQuery.From.UserName
+			} else if update.Message != nil {
+				userID = update.Message.From.ID
+				userName = update.Message.From.UserName
+			} else {
+				continue // Update sin usuario (no debería pasar)
+			}
+
+			if !config.IsUserAllowed(userID) {
+				config.Log.Comentario("WARNING",
+					fmt.Sprintf("🚫 Usuario NO autorizado: %s (ID: %d)", userName, userID))
+				continue // Ignorar silenciosamente
+			}
+
+			// ──────────────────────────────────────────────
 			// CASO 1: Callback de botón inline
 			// ──────────────────────────────────────────────
 			if update.CallbackQuery != nil {
 				cb := update.CallbackQuery
-
-				config.Log.Comentario("DEBUG", fmt.Sprintf("Callback data: '%s'", cb.Data))
 
 				// Responder al callback
 				callbackAnswer := tgbotapi.NewCallback(cb.ID, "")

@@ -4,7 +4,7 @@
 
 ### 1. Configuración de variables de entorno
 
-Crea un archivo `.env` basado en `.env.example` con esta estructura:
+Crea un archivo `.env` basado en `example` con esta estructura:
 
 ```bash
 # Configuración bot de telegram
@@ -40,6 +40,16 @@ go build -o bot-telegram.exe main.go
 
 # Compilación cruzada (ej: compilar para Linux desde Windows)
 GOOS=linux GOARCH=amd64 go build -o bot-telegram main.go
+```
+
+## 🔒 Seguridad
+
+### Lista blanca de usuarios
+
+Configura `ALLOWED_USERS` en `.env` con los IDs de usuarios autorizados (separados por coma):
+
+```bash
+ALLOWED_USERS=123456789,987654321
 ```
 
 ---
@@ -138,7 +148,7 @@ go-tel/
 ├── go.mod                     # Dependencias del proyecto
 ├── go.sum                     # Checksums de dependencias
 ├── .env                       # Variables de entorno (no subir a git)
-├── .env.example               # Template de variables de entorno
+├── example               # Template de variables de entorno
 ├── .gitignore                 # Archivos ignorados
 ├── README.md                  # Esta documentación
 ├── /controller                # Lógica de negocio (servicios)
