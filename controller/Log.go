@@ -145,3 +145,18 @@ func (l *Log) Error(descripcionError string, proceso ...string) {
 func (l *Log) Separador() {
 	l.escribirLog(l.archivoProcesos, strings.Repeat("=", logAncho))
 }
+
+func (l *Log) cleanupOldLogs() {
+	// Borrar logs de más de 7 días
+	cutoff := time.Now().AddDate(0, 0, -7)
+
+	filepath.Walk(l.rutaProcesos, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if !info.IsDir() && info.ModTime().Before(cutoff) {
+			os.Remove(path)
+		}
+		return nil
+	})
+}

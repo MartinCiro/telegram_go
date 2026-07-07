@@ -278,7 +278,6 @@ graph TB
 - **Context cancellation**: comandos cancelables vía `context.WithTimeout`
 
 > **⚠️ Nota de seguridad**: El bot ejecuta cualquier comando que reciba. En producción, considera implementar:
-> - Lista blanca de usuarios autorizados
 > - Sandbox de comandos permitidos
 > - Rate limiting
 

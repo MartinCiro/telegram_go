@@ -110,39 +110,101 @@ func main() {
 				userID = update.Message.From.ID
 				userName = update.Message.From.UserName
 			} else {
-				continue // Update sin usuario (no debería pasar)
+				continue // Update sin usuario
 			}
 
 			if !config.IsUserAllowed(userID) {
 				config.Log.Comentario("WARNING",
 					fmt.Sprintf("🚫 Usuario NO autorizado: %s (ID: %d)", userName, userID))
-				continue // Ignorar silenciosamente
+				continue // Ignorar sin consumir slot
 			}
 
 			// ──────────────────────────────────────────────
-			// CASO 1: Callback de botón inline
+			// ADQUIRIR SLOT del semáforo (bloquea si hay 10 en proceso)
 			// ──────────────────────────────────────────────
-			if update.CallbackQuery != nil {
-				cb := update.CallbackQuery
+			sigChan := make(chan os.Signal, 1)
+			signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-				// Responder al callback
-				callbackAnswer := tgbotapi.NewCallback(cb.ID, "")
-				if _, err := bot.Request(callbackAnswer); err != nil {
-					fmt.Printf("❌ Error respondiendo callback: %v\n", err)
+			semaphore := make(chan struct{}, 10)
+
+			// ──────────────────────────────────────────────
+			// PROCESAR en goroutine independiente
+			// ──────────────────────────────────────────────
+			go func(u tgbotapi.Update) {
+				// ← CRÍTICO: liberar slot al terminar
+				defer func() { <-semaphore }()
+
+				// CASO 1: Callback de botón inline
+				if u.CallbackQuery != nil {
+					cb := u.CallbackQuery
+
+					// Responder al callback
+					callbackAnswer := tgbotapi.NewCallback(cb.ID, "")
+					if _, err := bot.Request(callbackAnswer); err != nil {
+						fmt.Printf("❌ Error respondiendo callback: %v\n", err)
+					}
+
+					// Procesar el comando
+					response := handler.Handle(cb.Message.Chat.ID, cb.Data)
+
+					// Editar el mensaje
+					edit := tgbotapi.NewEditMessageText(
+						cb.Message.Chat.ID,
+						cb.Message.MessageID,
+						response.Text,
+					)
+					edit.ParseMode = "Markdown"
+
+					// Reconstruir inline keyboard
+					if response.HasInlineButtons() {
+						var rows [][]tgbotapi.InlineKeyboardButton
+						var currentRow []tgbotapi.InlineKeyboardButton
+
+						for _, btn := range response.Buttons {
+							if btn.Type == controller.ButtonInline {
+								currentRow = append(currentRow, tgbotapi.NewInlineKeyboardButtonData(btn.Text, btn.Data))
+								if len(currentRow) == 2 {
+									rows = append(rows, currentRow)
+									currentRow = nil
+								}
+							}
+						}
+						if len(currentRow) > 0 {
+							rows = append(rows, currentRow)
+						}
+
+						kb := tgbotapi.NewInlineKeyboardMarkup(rows...)
+						edit.ReplyMarkup = &kb
+					}
+
+					// Enviar el edit
+					if _, err := bot.Send(edit); err != nil {
+						fmt.Printf("❌ Error editando mensaje: %v\n", err)
+						config.Log.Error(fmt.Sprintf("Error editando mensaje: %v", err), "Telegram")
+					} else {
+						// Forzar que se quite el teclado inline
+						emptyKb := tgbotapi.NewInlineKeyboardMarkup()
+						edit.ReplyMarkup = &emptyKb
+					}
+					return
 				}
 
-				// Procesar el comando
-				response := handler.Handle(cb.Message.Chat.ID, cb.Data)
+				// ──────────────────────────────────────────────
+				// CASO 2: Mensaje normal (texto, reply buttons, etc.)
+				// ──────────────────────────────────────────────
+				if u.Message == nil {
+					return
+				}
 
-				// Editar el mensaje
-				edit := tgbotapi.NewEditMessageText(
-					cb.Message.Chat.ID,
-					cb.Message.MessageID,
-					response.Text,
-				)
-				edit.ParseMode = "Markdown"
+				config.Log.Comentario("INFO", fmt.Sprintf("Mensaje de %s: %s",
+					u.Message.From.UserName, u.Message.Text))
 
-				// Reconstruir inline keyboard
+				response := handler.Handle(u.Message.Chat.ID, u.Message.Text)
+
+				msg := tgbotapi.NewMessage(u.Message.Chat.ID, response.Text)
+				msg.ParseMode = "Markdown"
+
+				// Inline keyboard
 				if response.HasInlineButtons() {
 					var rows [][]tgbotapi.InlineKeyboardButton
 					var currentRow []tgbotapi.InlineKeyboardButton
@@ -160,105 +222,57 @@ func main() {
 						rows = append(rows, currentRow)
 					}
 
-					kb := tgbotapi.NewInlineKeyboardMarkup(rows...)
-					edit.ReplyMarkup = &kb
+					msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(rows...)
 				}
 
-				// Enviar el edit
-				if _, err := bot.Send(edit); err != nil {
-					fmt.Printf("❌ Error editando mensaje: %v\n", err)
-					config.Log.Error(fmt.Sprintf("Error editando mensaje: %v", err), "Telegram")
-				} else {
-					// Forzar que se quite el teclado inline
-					emptyKb := tgbotapi.NewInlineKeyboardMarkup()
-					edit.ReplyMarkup = &emptyKb
+				persistentButtons := [][]tgbotapi.KeyboardButton{
+					{
+						tgbotapi.NewKeyboardButton("🏠"),
+						tgbotapi.NewKeyboardButton("❓"),
+						tgbotapi.NewKeyboardButton("💻"),
+						tgbotapi.NewKeyboardButton("ℹ️"),
+					},
 				}
-				continue
-			}
-
-			// ──────────────────────────────────────────────
-			// CASO 2: Mensaje normal (texto, reply buttons, etc.)
-			// ──────────────────────────────────────────────
-			if update.Message == nil {
-				continue
-			}
-
-			config.Log.Comentario("INFO", fmt.Sprintf("Mensaje de %s: %s",
-				update.Message.From.UserName, update.Message.Text))
-
-			response := handler.Handle(update.Message.Chat.ID, update.Message.Text)
-
-			msg := tgbotapi.NewMessage(update.Message.Chat.ID, response.Text)
-			msg.ParseMode = "Markdown"
-
-			// Inline keyboard
-			if response.HasInlineButtons() {
-				var rows [][]tgbotapi.InlineKeyboardButton
-				var currentRow []tgbotapi.InlineKeyboardButton
-
-				for _, btn := range response.Buttons {
-					if btn.Type == controller.ButtonInline {
-						currentRow = append(currentRow, tgbotapi.NewInlineKeyboardButtonData(btn.Text, btn.Data))
-						if len(currentRow) == 2 {
-							rows = append(rows, currentRow)
-							currentRow = nil
-						}
-					}
-				}
-				if len(currentRow) > 0 {
-					rows = append(rows, currentRow)
-				}
-
-				msg.ReplyMarkup = tgbotapi.NewInlineKeyboardMarkup(rows...)
-			}
-
-			persistentButtons := [][]tgbotapi.KeyboardButton{
-				{
-					tgbotapi.NewKeyboardButton("🏠"),
-					tgbotapi.NewKeyboardButton("❓"),
-					tgbotapi.NewKeyboardButton("💻"),
-					tgbotapi.NewKeyboardButton("ℹ️"),
-				},
-			}
-			persistentKeyboard := tgbotapi.NewReplyKeyboard(persistentButtons...)
-			persistentKeyboard.ResizeKeyboard = true
-
-			// Reply keyboard
-			if response.HasReplyButtons() {
-				var extraRows [][]tgbotapi.KeyboardButton
-				var currentRow []tgbotapi.KeyboardButton
-
-				for _, btn := range response.Buttons {
-					if btn.Type == controller.ButtonReply {
-						currentRow = append(currentRow, tgbotapi.NewKeyboardButton(btn.Text))
-						if len(currentRow) == 2 {
-							extraRows = append(extraRows, currentRow)
-							currentRow = nil
-						}
-					}
-				}
-				if len(currentRow) > 0 {
-					extraRows = append(extraRows, currentRow)
-				}
-
-				// Combinar: botones persistentes + botones de la respuesta
-				allRows := append(persistentButtons, extraRows...)
-				persistentKeyboard = tgbotapi.NewReplyKeyboard(allRows...)
+				persistentKeyboard := tgbotapi.NewReplyKeyboard(persistentButtons...)
 				persistentKeyboard.ResizeKeyboard = true
-			}
 
-			if response.ForceReply {
-				msg.ReplyMarkup = tgbotapi.ForceReply{
-					ForceReply: true,
-					Selective:  true,
+				// Reply keyboard
+				if response.HasReplyButtons() {
+					var extraRows [][]tgbotapi.KeyboardButton
+					var currentRow []tgbotapi.KeyboardButton
+
+					for _, btn := range response.Buttons {
+						if btn.Type == controller.ButtonReply {
+							currentRow = append(currentRow, tgbotapi.NewKeyboardButton(btn.Text))
+							if len(currentRow) == 2 {
+								extraRows = append(extraRows, currentRow)
+								currentRow = nil
+							}
+						}
+					}
+					if len(currentRow) > 0 {
+						extraRows = append(extraRows, currentRow)
+					}
+
+					// Combinar: botones persistentes + botones de la respuesta
+					allRows := append(persistentButtons, extraRows...)
+					persistentKeyboard = tgbotapi.NewReplyKeyboard(allRows...)
+					persistentKeyboard.ResizeKeyboard = true
 				}
-			} else {
-				msg.ReplyMarkup = persistentKeyboard
-			}
 
-			if _, err := bot.Send(msg); err != nil {
-				config.Log.Error(fmt.Sprintf("Error enviando respuesta: %v", err), "Telegram")
-			}
+				if response.ForceReply {
+					msg.ReplyMarkup = tgbotapi.ForceReply{
+						ForceReply: true,
+						Selective:  true,
+					}
+				} else {
+					msg.ReplyMarkup = persistentKeyboard
+				}
+
+				if _, err := bot.Send(msg); err != nil {
+					config.Log.Error(fmt.Sprintf("Error enviando respuesta: %v", err), "Telegram")
+				}
+			}(update) // ← Pasar update por valor a la goroutine
 		}
 	}()
 

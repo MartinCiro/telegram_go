@@ -5,6 +5,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 )
 
 // BotHandler orquestador que rutea mensajes a los servicios correctos
@@ -12,7 +13,7 @@ type BotHandler struct {
 	network         *NetworkService
 	executor        *CommandExecutor
 	log             *Log
-	pendingCommands map[int64]bool
+	pendingCommands map[int64]time.Time
 	mu              sync.Mutex
 }
 
@@ -22,7 +23,7 @@ func NewBotHandler(network *NetworkService, executor *CommandExecutor, log *Log)
 		network:         network,
 		executor:        executor,
 		log:             log,
-		pendingCommands: make(map[int64]bool),
+		pendingCommands: make(map[int64]time.Time),
 	}
 }
 
@@ -35,9 +36,21 @@ func (h *BotHandler) Handle(chatID int64, text string) *Response {
 
 	// PRIORIDAD 1: Si el chat está esperando comando
 	h.mu.Lock()
-	waiting := h.pendingCommands[chatID]
+	pendingTime, waiting := h.pendingCommands[chatID]
+
+	// Limpiar si expiró (5 minutos)
+	if waiting && time.Since(pendingTime) > 5*time.Minute {
+		delete(h.pendingCommands, chatID)
+		waiting = false
+		if h.log != nil {
+			h.log.Comentario("WARNING", fmt.Sprintf("⏰ Timeout de comando pendiente para chat %d", chatID))
+		}
+	}
+
 	if waiting {
 		delete(h.pendingCommands, chatID)
+	} else if strings.ToLower(text) == "/comando" {
+		h.pendingCommands[chatID] = time.Now() // ← Guardar timestamp
 	}
 	h.mu.Unlock()
 
@@ -60,7 +73,7 @@ func (h *BotHandler) Handle(chatID int64, text string) *Response {
 
 	case lower == "/comando" || lower == "💻":
 		h.mu.Lock()
-		h.pendingCommands[chatID] = true
+		h.pendingCommands[chatID] = time.Now()
 		h.mu.Unlock()
 
 		resp := NewResponse("💻 Envíame el comando que quieres ejecutar:")
