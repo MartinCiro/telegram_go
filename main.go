@@ -44,7 +44,7 @@ func main() {
 		{Command: "start", Description: "Información completa del bot"},
 		{Command: "estado", Description: "Ver IPs y red actual"},
 		{Command: "comando", Description: "Ejecutar comando del sistema"},
-		{Command: "ayuda", Description: "ℹ️Lista de comandos"},
+		{Command: "ayuda", Description: "ℹ️ Lista de comandos"},
 
 		{Command: "icono_home", Description: "🏠 Inicio"},
 		{Command: "icono_status", Description: "ℹ️ Lista de comandos"},

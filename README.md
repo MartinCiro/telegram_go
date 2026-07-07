@@ -202,21 +202,15 @@ graph TD
     O --> J
     
     M -->|No| P{¿Qué comando?}
-    P -->|/start| Q[Info completa + botones inline]
-    P -->|/estado| R[Info de red]
-    P -->|/ayuda| S[Lista de comandos]
-    P -->|/comando| T[Activar modo comando]
-    P -->|/comando X| U[Ejecutar comando X]
-    P -->|/icono home| Q
-    P -->|/icono help| S
-    P -->|/icono bash| T
+    P -->|/start ó 🏠| Q[Info completa + botones inline]
+    P -->|/estado ó ℹ️| R[Info de red]
+    P -->|/ayuda ó ❓| S[Lista de comandos]
+    P -->|/comando X ó 💻| T[Ejecutar comando X]
     P -->|Otro| V[Error: comando no reconocido]
-    
     Q --> W[Enviar respuesta]
     R --> W
     S --> W
     T --> W
-    U --> W
     V --> W
     W --> J
 ```
