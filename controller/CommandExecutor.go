@@ -168,14 +168,11 @@ func buildAliasLoader(shell string, aliases map[string]string, command string) s
 		}
 
 	default: // ash, sh, y otros shells POSIX
-		// Los shells POSIX no soportan aliases en scripts no interactivos
 		// Usamos funciones como alternativa
 		for name, cmd := range aliases {
 			escapedCmd := escapeShellArg(cmd)
 			// Crear una función que imite el comportamiento del alias
-			sb.WriteString(fmt.Sprintf("%s() { %s; }\n", name, escapedCmd))
-			// Exportar la función para que esté disponible en sub-shells
-			sb.WriteString(fmt.Sprintf("export -f %s\n", name))
+			sb.WriteString(fmt.Sprintf("%s() { %s \"$@\"; }\n", name, escapedCmd))
 		}
 	}
 
