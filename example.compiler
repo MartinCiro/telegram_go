@@ -1,0 +1,5 @@
+GITHUB_TOKEN=github_pat_xxxx
+GITHUB_REPO=User/repo
+RELEASE_TAG=release_version
+RELEASE_TITLE="release_version + title"
+RELEASE_NOTES="caracteristicas + \n"

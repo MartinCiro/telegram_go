@@ -174,3 +174,19 @@ logs
 ~/
 .continue
 .vscode
+
+*.exe
+*.dll
+*.dylib
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+.env*
