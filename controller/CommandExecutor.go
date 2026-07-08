@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -116,26 +118,77 @@ func (e *CommandExecutor) buildCommand(command string) *exec.Cmd {
 		return exec.Command("cmd", "/C", command)
 	}
 
-	// Si no hay aliases, ejecutar directamente
+	// Si no hay aliases, ejecutar directamente con sh
 	if len(e.config.ShellAliases) == 0 {
 		return exec.Command("sh", "-c", command)
 	}
 
-	// Construir loader de alias
-	var sb strings.Builder
-	sb.WriteString("shopt -s expand_aliases\n")
+	// Detectar el shell disponible
+	shell := detectAvailableShell()
+	loader := buildAliasLoader(shell, e.config.ShellAliases, command)
 
-	for name, cmd := range e.config.ShellAliases {
-		// Escapar comillas simples en el comando
-		escapedCmd := strings.ReplaceAll(cmd, "'", "'\"'\"'")
-		sb.WriteString(fmt.Sprintf("alias %s='%s'\n", name, escapedCmd))
+	return exec.Command(shell, "-c", loader)
+}
+
+// detectAvailableShell detecta qué shell está disponible en el sistema
+func detectAvailableShell() string {
+	// Lista de shells en orden de preferencia
+	shells := []string{"/bin/bash", "/bin/zsh", "/bin/ash", "/bin/sh"}
+
+	for _, shell := range shells {
+		if _, err := os.Stat(shell); err == nil {
+			return shell
+		}
 	}
 
-	// Añadir el comando a ejecutar
+	// Fallback a sh que debería existir en todos los sistemas POSIX
+	return "/bin/sh"
+}
+
+// buildAliasLoader construye el script para cargar aliases según el shell
+func buildAliasLoader(shell string, aliases map[string]string, command string) string {
+	var sb strings.Builder
+
+	// Determinar el tipo de shell por el nombre
+	shellName := filepath.Base(shell)
+
+	switch shellName {
+	case "bash":
+		sb.WriteString("shopt -s expand_aliases\n")
+		for name, cmd := range aliases {
+			escapedCmd := escapeShellArg(cmd)
+			sb.WriteString(fmt.Sprintf("alias %s='%s'\n", name, escapedCmd))
+		}
+
+	case "zsh":
+		sb.WriteString("setopt aliases\n")
+		for name, cmd := range aliases {
+			escapedCmd := escapeShellArg(cmd)
+			sb.WriteString(fmt.Sprintf("alias %s='%s'\n", name, escapedCmd))
+		}
+
+	default: // ash, sh, y otros shells POSIX
+		// Los shells POSIX no soportan aliases en scripts no interactivos
+		// Usamos funciones como alternativa
+		for name, cmd := range aliases {
+			escapedCmd := escapeShellArg(cmd)
+			// Crear una función que imite el comportamiento del alias
+			sb.WriteString(fmt.Sprintf("%s() { %s; }\n", name, escapedCmd))
+			// Exportar la función para que esté disponible en sub-shells
+			sb.WriteString(fmt.Sprintf("export -f %s\n", name))
+		}
+	}
+
 	sb.WriteString("\n")
 	sb.WriteString(command)
 
-	return exec.Command("sh", "-c", sb.String())
+	return sb.String()
+}
+
+// escapeShellArg escapa comillas simples en argumentos shell
+func escapeShellArg(arg string) string {
+	// Reemplazar ' con '\'' para escapar en shell
+	return strings.ReplaceAll(arg, "'", "'\"'\"'")
 }
 
 // truncateOutput limita el tamaño del output para no saturar Telegram

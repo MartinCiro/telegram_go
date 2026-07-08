@@ -93,6 +93,7 @@ func main() {
 	// 8️⃣ Shutdown graceful
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	semaphore := make(chan struct{}, 10)
 
 	// 9️⃣ Loop principal
 	go func() {
@@ -122,10 +123,8 @@ func main() {
 			// ──────────────────────────────────────────────
 			// ADQUIRIR SLOT del semáforo (bloquea si hay 10 en proceso)
 			// ──────────────────────────────────────────────
-			sigChan := make(chan os.Signal, 1)
-			signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-			semaphore := make(chan struct{}, 10)
+			semaphore <- struct{}{}
 
 			// ──────────────────────────────────────────────
 			// PROCESAR en goroutine independiente
