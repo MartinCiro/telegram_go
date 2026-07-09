@@ -1,3 +1,4 @@
+// controller/BotHandler.go
 package controller
 
 import (
@@ -12,16 +13,18 @@ import (
 type BotHandler struct {
 	network         *NetworkService
 	executor        *CommandExecutor
+	updater         *UpdateService
 	log             *Log
 	pendingCommands map[int64]time.Time
 	mu              sync.Mutex
 }
 
 // NewBotHandler crea un handler con dependencias inyectadas
-func NewBotHandler(network *NetworkService, executor *CommandExecutor, log *Log) *BotHandler {
+func NewBotHandler(network *NetworkService, executor *CommandExecutor, updater *UpdateService, log *Log) *BotHandler {
 	return &BotHandler{
 		network:         network,
 		executor:        executor,
+		updater:         updater,
 		log:             log,
 		pendingCommands: make(map[int64]time.Time),
 	}
@@ -70,6 +73,9 @@ func (h *BotHandler) Handle(chatID int64, text string) *Response {
 
 	case lower == "/ayuda" || lower == "/help" || lower == "❓":
 		return h.handleAyuda()
+
+	case lower == "/up" || lower == "🔄":
+		return h.handleUpdate()
 
 	case lower == "/comando" || lower == "💻":
 		h.mu.Lock()
@@ -160,6 +166,18 @@ func (h *BotHandler) handleComando(command string) *Response {
 
 	result := h.executor.Execute(command)
 	text := result.FormatForTelegram(command)
+
+	return NewResponse(text)
+}
+
+// handleUpdate descarga la última versión del bot
+func (h *BotHandler) handleUpdate() *Response {
+	if h.log != nil {
+		h.log.Comentario("INFO", "Comando /up ejecutado - Iniciando actualización")
+	}
+
+	result := h.updater.CheckAndUpdate()
+	text := result.FormatForTelegram()
 
 	return NewResponse(text)
 }

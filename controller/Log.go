@@ -1,3 +1,4 @@
+// controller/Log.go
 package controller
 
 import (
@@ -61,11 +62,14 @@ func (l *Log) formatearMensaje(lineas ...string) string {
 	var sb strings.Builder
 	sb.WriteString(strings.Repeat("=", logAncho) + "\n")
 	for _, linea := range lineas {
-		// Padding: "| contenido |"
-		padded := linea + strings.Repeat(" ", logAncho-4-len(linea))
-		if len(padded) > logAncho-4 {
-			padded = padded[:logAncho-4]
+		// ← FIX: Truncar línea si es muy larga para evitar Repeat count negativo
+		maxLen := logAncho - 4
+		if len(linea) > maxLen {
+			linea = linea[:maxLen-3] + "..."
 		}
+
+		// Padding: "| contenido |"
+		padded := linea + strings.Repeat(" ", maxLen-len(linea))
 		sb.WriteString(fmt.Sprintf("| %s |\n", padded))
 	}
 	sb.WriteString(strings.Repeat("=", logAncho) + "\n")

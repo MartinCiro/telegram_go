@@ -1,3 +1,4 @@
+// main.go
 package main
 
 import (
@@ -23,7 +24,8 @@ func main() {
 	// 2️⃣ Instanciar servicios
 	networkService := controller.NewNetworkService()
 	executor := controller.NewCommandExecutor(config)
-	handler := controller.NewBotHandler(networkService, executor, config.Log)
+	updater := controller.NewUpdateService(config.Log)
+	handler := controller.NewBotHandler(networkService, executor, updater, config.Log)
 
 	config.Log.InicioProceso("Bot Telegram")
 	config.Log.Comentario("SUCCESS", "Servicios inicializados")
@@ -41,15 +43,11 @@ func main() {
 
 	// 4️⃣ Registrar menú de comandos (Opción 1)
 	commands := []tgbotapi.BotCommand{
-		{Command: "start", Description: "Información completa del bot"},
-		{Command: "estado", Description: "Ver IPs y red actual"},
-		{Command: "comando", Description: "Ejecutar comando del sistema"},
-		{Command: "ayuda", Description: "ℹ️ Lista de comandos"},
-
-		{Command: "icono_home", Description: "🏠 Inicio"},
-		{Command: "icono_status", Description: "ℹ️ Lista de comandos"},
-		{Command: "icono_bash", Description: "💻 Terminal"},
-		{Command: "icono_help", Description: "❓ Ayuda"},
+		{Command: "start", Description: "🏠 Información del bot"},
+		{Command: "estado", Description: "ℹ️ Ver IPs y red actual"},
+		{Command: "comando", Description: "💻 Ejecutar comando"},
+		{Command: "ayuda", Description: "❓ Lista de comandos"},
+		{Command: "up", Description: "🔄 Actualizar bot"},
 	}
 	setCmd := tgbotapi.NewSetMyCommands(commands...)
 	if _, err := bot.Request(setCmd); err != nil {

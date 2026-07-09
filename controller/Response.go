@@ -1,3 +1,4 @@
+// controller/Response.go
 package controller
 
 // ButtonType tipo de botón

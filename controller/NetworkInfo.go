@@ -1,3 +1,4 @@
+// controller/NetworkInfo.go
 package controller
 
 import (
