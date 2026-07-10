@@ -44,9 +44,83 @@ escape_json() {
     echo "$str"
 }
 
+# Función para compilar binarios
+compile_binaries() {
+    echo "🔨 Compilando binarios para $RELEASE_TAG..."
+    
+    # Crear carpeta build si no existe
+    mkdir -p build
+    
+    # Limpiar binarios anteriores si la versión cambió
+    local last_version_file="build/.last_version"
+    local last_version=""
+    
+    if [ -f "$last_version_file" ]; then
+        last_version=$(cat "$last_version_file")
+    fi
+    
+    if [ "$last_version" != "$RELEASE_TAG" ]; then
+        echo "  🗑️  Versión cambió: $last_version → $RELEASE_TAG"
+        echo "  🗑️  Limpiando binarios anteriores..."
+        rm -f build/bot-telegram-linux-amd64
+        rm -f build/bot-telegram-linux-arm64
+        rm -f build/bot-telegram-windows-amd64.exe
+    fi
+    
+    # Compilar para Linux amd64
+    if [ ! -f "build/bot-telegram-linux-amd64" ]; then
+        echo "  → Compilando Linux amd64..."
+        GOOS=linux GOARCH=amd64 go build -o build/bot-telegram-linux-amd64 main.go
+        if [ $? -eq 0 ]; then
+            echo "    ✅ Linux amd64 compilado"
+        else
+            echo "    ❌ Error compilando Linux amd64"
+            exit 1
+        fi
+    else
+        echo "  ✓ Linux amd64 ya existe"
+    fi
+    
+    # Compilar para Linux arm64
+    if [ ! -f "build/bot-telegram-linux-arm64" ]; then
+        echo "  → Compilando Linux arm64..."
+        GOOS=linux GOARCH=arm64 go build -o build/bot-telegram-linux-arm64 main.go
+        if [ $? -eq 0 ]; then
+            echo "    ✅ Linux arm64 compilado"
+        else
+            echo "    ❌ Error compilando Linux arm64"
+            exit 1
+        fi
+    else
+        echo "  ✓ Linux arm64 ya existe"
+    fi
+    
+    # Compilar para Windows amd64
+    if [ ! -f "build/bot-telegram-windows-amd64.exe" ]; then
+        echo "  → Compilando Windows amd64..."
+        GOOS=windows GOARCH=amd64 go build -o build/bot-telegram-windows-amd64.exe main.go
+        if [ $? -eq 0 ]; then
+            echo "    ✅ Windows amd64 compilado"
+        else
+            echo "    ❌ Error compilando Windows amd64"
+            exit 1
+        fi
+    else
+        echo "  ✓ Windows amd64 ya existe"
+    fi
+    
+    # Guardar la versión actual
+    echo "$RELEASE_TAG" > "$last_version_file"
+    
+    echo "✅ Todos los binarios están listos para $RELEASE_TAG"
+}
+
 # Escapar las variables para JSON
 ESCAPED_TITLE=$(escape_json "$RELEASE_TITLE")
 ESCAPED_NOTES=$(escape_json "$RELEASE_NOTES")
+
+# Compilar binarios si no existen o si la versión cambió
+compile_binaries
 
 # Crear release
 echo "🚀 Creando release $RELEASE_TAG en $GITHUB_REPO..."
