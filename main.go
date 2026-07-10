@@ -82,11 +82,22 @@ func main() {
 	}
 
 	// 7️⃣ Configurar polling
+	deleteWebhook := tgbotapi.DeleteWebhookConfig{
+		DropPendingUpdates: true, // ← Descartar mensajes antiguos
+	}
+
+	if _, err := bot.Request(deleteWebhook); err != nil {
+		config.Log.Comentario("WARNING", fmt.Sprintf("Error eliminando webhook: %v", err))
+	} else {
+		config.Log.Comentario("SUCCESS", "Webhook eliminado y mensajes antiguos descartados")
+	}
+
+	// Ahora iniciar polling desde el final
 	u := tgbotapi.NewUpdate(0)
 	u.Timeout = 60
 	updates := bot.GetUpdatesChan(u)
-	config.Log.Comentario("INFO", "Esperando mensajes...")
-	fmt.Println("📱 Esperando mensajes... (Ctrl+C para salir)")
+	config.Log.Comentario("INFO", "Esperando mensajes NUEVOS...")
+	fmt.Println("📱 Esperando mensajes nuevos... (Ctrl+C para salir)")
 
 	// 8️⃣ Shutdown graceful
 	sigChan := make(chan os.Signal, 1)
