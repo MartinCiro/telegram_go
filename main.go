@@ -25,7 +25,8 @@ func main() {
 	networkService := controller.NewNetworkService()
 	executor := controller.NewCommandExecutor(config)
 	updater := controller.NewUpdateService(config.Log)
-	handler := controller.NewBotHandler(networkService, executor, updater, config.Log)
+	tunnel := controller.NewTunnelService(config.Log)
+	handler := controller.NewBotHandler(networkService, executor, updater, tunnel, config.Log)
 
 	config.Log.InicioProceso("Bot Telegram")
 	config.Log.Comentario("SUCCESS", "Servicios inicializados")
@@ -46,6 +47,7 @@ func main() {
 		{Command: "start", Description: "🏠 Información del bot"},
 		{Command: "estado", Description: "ℹ️ Ver IPs y red actual"},
 		{Command: "comando", Description: "💻 Ejecutar comando"},
+		{Command: "ver_url", Description: "🔗 Ver URL del túnel Cloudflare"},
 		{Command: "ayuda", Description: "❓ Lista de comandos"},
 		{Command: "up", Description: "🔄 Actualizar bot"},
 	}
@@ -238,6 +240,7 @@ func main() {
 						tgbotapi.NewKeyboardButton("🏠"),
 						tgbotapi.NewKeyboardButton("❓"),
 						tgbotapi.NewKeyboardButton("💻"),
+						tgbotapi.NewKeyboardButton("🔗"),
 						tgbotapi.NewKeyboardButton("ℹ️"),
 					},
 				}

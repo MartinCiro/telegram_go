@@ -14,17 +14,19 @@ type BotHandler struct {
 	network         *NetworkService
 	executor        *CommandExecutor
 	updater         *UpdateService
+	tunnel          *TunnelService
 	log             *Log
 	pendingCommands map[int64]time.Time
 	mu              sync.Mutex
 }
 
 // NewBotHandler crea un handler con dependencias inyectadas
-func NewBotHandler(network *NetworkService, executor *CommandExecutor, updater *UpdateService, log *Log) *BotHandler {
+func NewBotHandler(network *NetworkService, executor *CommandExecutor, updater *UpdateService, tunnel *TunnelService, log *Log) *BotHandler {
 	return &BotHandler{
 		network:         network,
 		executor:        executor,
 		updater:         updater,
+		tunnel:          tunnel,
 		log:             log,
 		pendingCommands: make(map[int64]time.Time),
 	}
@@ -76,6 +78,9 @@ func (h *BotHandler) Handle(chatID int64, text string) *Response {
 
 	case lower == "/up" || lower == "🔄":
 		return h.handleUpdate()
+
+	case lower == "/ver_url" || lower == "🔗":
+		return h.handleVerUrl()
 
 	case lower == "/comando" || lower == "💻":
 		h.mu.Lock()
@@ -180,4 +185,21 @@ func (h *BotHandler) handleUpdate() *Response {
 	text := result.FormatForTelegram()
 
 	return NewResponse(text)
+}
+
+// handleVerUrl muestra la URL del túnel
+func (h *BotHandler) handleVerUrl() *Response {
+	if h.log != nil {
+		h.log.Comentario("INFO", "Comando /ver_url ejecutado")
+	}
+
+	// El servicio se encarga de verificar, iniciar si es necesario y retornar la URL
+	url, err := h.tunnel.EnsureTunnelRunning()
+	if err != nil {
+		return NewResponse(fmt.Sprintf("❌ *Error:* %v\n\n💡 Asegúrate de que `cloudflared` esté instalado en el sistema.", err))
+	}
+
+	cleanURL := strings.TrimPrefix(url, "https://")
+
+	return NewResponse(cleanURL)
 }
