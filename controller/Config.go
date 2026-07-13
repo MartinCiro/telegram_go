@@ -18,6 +18,9 @@ type Config struct {
 	AllowedUsers  []int64
 	ShellAliases  map[string]string
 	Log           *Log
+	WolTargetIP   string
+	WolTargetUser string
+	WolSSHPort    int
 }
 
 // NewConfig crea una nueva instancia de Config
@@ -51,12 +54,32 @@ func NewConfig() *Config {
 		}
 	}
 
+	wolIP := os.Getenv("WOL_TARGET_IP")
+	if wolIP == "" {
+		wolIP = "192.168.0.61"
+	}
+
+	wolUser := os.Getenv("WOL_TARGET_USER")
+	if wolUser == "" {
+		wolUser = "user"
+	}
+
+	wolPort := 22
+	if portStr := os.Getenv("WOL_SSH_PORT"); portStr != "" {
+		if p, err := strconv.Atoi(portStr); err == nil {
+			wolPort = p
+		}
+	}
+
 	return &Config{
 		TelegramToken: token,
 		TelegramChat:  chatID,
 		AllowedUsers:  allowedUsers,
 		ShellAliases:  shellAliases,
 		Log:           NewLog(),
+		WolTargetIP:   wolIP,
+		WolTargetUser: wolUser,
+		WolSSHPort:    wolPort,
 	}
 }
 

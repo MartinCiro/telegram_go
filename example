@@ -4,3 +4,7 @@ TELEGRAM_CHAT=id_usuario
 ALLOWED_USERS=lista_usuarios_habilitados
 
 SHELL_ALIASES=alias_separado_coma
+
+WOL_TARGET_IP=ip_wol or 192.168.0.61
+WOL_TARGET_USER=user_ip or user
+WOL_SSH_PORT=port_ip or 22

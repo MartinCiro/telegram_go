@@ -15,18 +15,20 @@ type BotHandler struct {
 	executor        *CommandExecutor
 	updater         *UpdateService
 	tunnel          *TunnelService
+	wol             *WolService
 	log             *Log
 	pendingCommands map[int64]time.Time
 	mu              sync.Mutex
 }
 
 // NewBotHandler crea un handler con dependencias inyectadas
-func NewBotHandler(network *NetworkService, executor *CommandExecutor, updater *UpdateService, tunnel *TunnelService, log *Log) *BotHandler {
+func NewBotHandler(network *NetworkService, executor *CommandExecutor, updater *UpdateService, tunnel *TunnelService, wol *WolService, log *Log) *BotHandler {
 	return &BotHandler{
 		network:         network,
 		executor:        executor,
 		updater:         updater,
 		tunnel:          tunnel,
+		wol:             wol,
 		log:             log,
 		pendingCommands: make(map[int64]time.Time),
 	}
@@ -81,6 +83,9 @@ func (h *BotHandler) Handle(chatID int64, text string) *Response {
 
 	case lower == "/ver_url" || lower == "🔗":
 		return h.handleVerUrl()
+
+	case lower == "/wol" || lower == "🔌":
+		return h.handleWol()
 
 	case lower == "/comando" || lower == "💻":
 		h.mu.Lock()
@@ -202,4 +207,22 @@ func (h *BotHandler) handleVerUrl() *Response {
 	cleanURL := strings.TrimPrefix(url, "https://")
 
 	return NewResponse(cleanURL)
+}
+
+// handleWol ejecuta el Wake-on-LAN y verifica la conexión
+func (h *BotHandler) handleWol() *Response {
+	if h.log != nil {
+		h.log.Comentario("INFO", "Comando /wol ejecutado")
+	}
+
+	// Ejecutar el flujo WoL (puede tardar ~15 segundos internamente)
+	result, err := h.wol.ExecuteWol()
+
+	if err != nil {
+		// Si hay error, retornamos el mensaje de error formateado directamente
+		return NewResponse(fmt.Sprintf("❌ *Error WoL:* %v", err))
+	}
+
+	// Retornar el resultado exitoso directamente
+	return NewResponse(result)
 }

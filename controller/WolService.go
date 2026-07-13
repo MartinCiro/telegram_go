@@ -1,0 +1,142 @@
+package controller
+
+import (
+	"fmt"
+	"net"
+	"os/exec"
+	"regexp"
+	"strings"
+	"time"
+)
+
+// WolService gestiona el Wake-on-LAN avanzado
+type WolService struct {
+	TargetIP   string
+	TargetUser string
+	SSHPort    int
+	Log        *Log
+}
+
+// NewWolService crea una nueva instancia del servicio WoL usando la configuración
+func NewWolService(config *Config) *WolService {
+	return &WolService{
+		TargetIP:   config.WolTargetIP,
+		TargetUser: config.WolTargetUser,
+		SSHPort:    config.WolSSHPort,
+		Log:        config.Log,
+	}
+}
+
+// ExecuteWol ejecuta el flujo completo: verificar -> obtener MAC -> enviar -> verificar
+func (s *WolService) ExecuteWol() (string, error) {
+	// 1. Verificar si ya está despierto
+	if s.isHostAwake() {
+		return fmt.Sprintf("✅ El equipo (%s) **ya está conectado** y responde. No es necesario enviar WoL.", s.TargetIP), nil
+	}
+
+	if s.Log != nil {
+		s.Log.Comentario("INFO", "Equipo dormido. Iniciando proceso WoL...")
+	}
+
+	// 2. Obtener dirección MAC
+	mac, err := s.getMACAddress()
+	if err != nil {
+		return "", fmt.Errorf("no se pudo obtener la dirección MAC de %s. Asegúrate de que el equipo haya estado encendido recientemente o configura una entrada ARP estática. Detalle: %v", s.TargetIP, err)
+	}
+
+	if s.Log != nil {
+		s.Log.Comentario("INFO", fmt.Sprintf("MAC encontrada: %s. Enviando paquete mágico...", mac))
+	}
+
+	// 3. Enviar Paquete Mágico
+	if err := s.sendMagicPacket(mac); err != nil {
+		return "", fmt.Errorf("error enviando paquete mágico: %v", err)
+	}
+
+	// 4. Esperar a que el equipo arranque (típicamente 10-15 segundos)
+	if s.Log != nil {
+		s.Log.Comentario("INFO", "Esperando a que el equipo inicie...")
+	}
+	time.Sleep(15 * time.Second)
+
+	// 5. Verificar nuevamente
+	if s.isHostAwake() {
+		successMsg := fmt.Sprintf("✅ **¡WoL Exitoso!**\n\nEl equipo `%s` ha despertado correctamente y el servicio SSH está disponible.\n\n👤 Usuario: `%s`\n🌐 IP: `%s`", s.TargetIP, s.TargetUser, s.TargetIP)
+		if s.Log != nil {
+			s.Log.Comentario("SUCCESS", "WoL completado exitosamente")
+		}
+		return successMsg, nil
+	}
+
+	return "⚠️ *Paquete WoL enviado*, pero el equipo no responde después de 15 segundos.\n\n💡 *Posibles causas:*\n• WoL desactivado en la BIOS/UEFI\n• El equipo no está conectado por cable Ethernet (WoL por WiFi no es confiable)\n• El firewall bloquea el puerto 22 o el paquete UDP", fmt.Errorf("timeout esperando respuesta del equipo")
+}
+
+// isHostAwake verifica si el puerto SSH del equipo está abierto
+func (s *WolService) isHostAwake() bool {
+	address := fmt.Sprintf("%s:%d", s.TargetIP, s.SSHPort)
+	conn, err := net.DialTimeout("tcp", address, 3*time.Second)
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
+}
+
+// getMACAddress obtiene la dirección MAC de la IP usando la tabla ARP del sistema
+func (s *WolService) getMACAddress() (string, error) {
+	// Intentamos con 'ip neigh' (moderno, disponible en Alpine/Linux)
+	cmd := exec.Command("ip", "neigh", "show", s.TargetIP)
+	output, err := cmd.Output()
+
+	if err != nil {
+		// Fallback a 'arp -n' (más antiguo, pero universal)
+		cmd = exec.Command("arp", "-n", s.TargetIP)
+		output, err = cmd.Output()
+		if err != nil {
+			return "", fmt.Errorf("falló la ejecución de comandos de red: %v", err)
+		}
+	}
+
+	// Expresión regular para encontrar una dirección MAC (ej: aa:bb:cc:dd:ee:ff o aa-bb-cc-dd-ee-ff)
+	macRegex := regexp.MustCompile(`([0-9a-fA-F]{2}[:-]){5}([0-9a-fA-F]{2})`)
+	match := macRegex.FindString(string(output))
+
+	if match == "" {
+		return "", fmt.Errorf("no se encontró la MAC en la tabla ARP. Intenta hacer ping a %s manualmente primero", s.TargetIP)
+	}
+
+	// Normalizar a formato con dos puntos (estándar para net.ParseMAC)
+	match = strings.ReplaceAll(match, "-", ":")
+	return strings.ToLower(match), nil
+}
+
+// sendMagicPacket construye y envía el paquete WoL por broadcast UDP
+func (s *WolService) sendMagicPacket(mac string) error {
+	macBytes, err := net.ParseMAC(mac)
+	if err != nil {
+		return fmt.Errorf("MAC inválida: %v", err)
+	}
+
+	// El paquete mágico son 6 bytes de 0xFF seguidos de 16 repeticiones de la MAC (6 + 16*6 = 102 bytes)
+	payload := make([]byte, 0, 102)
+	for i := 0; i < 6; i++ {
+		payload = append(payload, 0xff)
+	}
+	for i := 0; i < 16; i++ {
+		payload = append(payload, macBytes...)
+	}
+
+	// Enviar por broadcast a la dirección 255.255.255.255 en el puerto 9 (o 7)
+	conn, err := net.Dial("udp", "255.255.255.255:9")
+	if err != nil {
+		// Fallback a broadcast de la red local si el global falla
+		conn, err = net.Dial("udp", "192.168.1.255:9")
+		if err != nil {
+			return fmt.Errorf("no se pudo crear conexión UDP: %v", err)
+		}
+	}
+	defer conn.Close()
+
+	_, err = conn.Write(payload)
+	return err
+}
