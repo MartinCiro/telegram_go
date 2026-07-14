@@ -31,7 +31,7 @@ func NewWolService(config *Config) *WolService {
 func (s *WolService) ExecuteWol() (string, error) {
 	// 1. Verificar si ya está despierto
 	if s.isHostAwake() {
-		return fmt.Sprintf("✅ El equipo (%s) **ya está conectado** y responde. No es necesario enviar WoL.", s.TargetIP), nil
+		return fmt.Sprintf("✅ El equipo (`%s`) **ya está conectado** y responde. No es necesario enviar WoL.", s.TargetIP), nil
 	}
 
 	if s.Log != nil {
@@ -41,7 +41,7 @@ func (s *WolService) ExecuteWol() (string, error) {
 	// 2. Obtener dirección MAC
 	mac, err := s.getMACAddress()
 	if err != nil {
-		return "", fmt.Errorf("no se pudo obtener la dirección MAC de %s. Asegúrate de que el equipo haya estado encendido recientemente o configura una entrada ARP estática. Detalle: %v", s.TargetIP, err)
+		return "", fmt.Errorf("no se pudo obtener la dirección MAC de %s. Detalle: %v", s.TargetIP, err)
 	}
 
 	if s.Log != nil {
@@ -53,22 +53,20 @@ func (s *WolService) ExecuteWol() (string, error) {
 		return "", fmt.Errorf("error enviando paquete mágico: %v", err)
 	}
 
-	// 4. Esperar a que el equipo arranque (típicamente 10-15 segundos)
 	if s.Log != nil {
-		s.Log.Comentario("INFO", "Esperando a que el equipo inicie...")
-	}
-	time.Sleep(15 * time.Second)
-
-	// 5. Verificar nuevamente
-	if s.isHostAwake() {
-		successMsg := fmt.Sprintf("✅ **¡WoL Exitoso!**\n\nEl equipo `%s` ha despertado correctamente y el servicio SSH está disponible.\n\n👤 Usuario: `%s`\n🌐 IP: `%s`", s.TargetIP, s.TargetUser, s.TargetIP)
-		if s.Log != nil {
-			s.Log.Comentario("SUCCESS", "WoL completado exitosamente")
-		}
-		return successMsg, nil
+		s.Log.Comentario("SUCCESS", "Paquete WoL enviado exitosamente")
 	}
 
-	return "⚠️ *Paquete WoL enviado*, pero el equipo no responde después de 15 segundos.\n\n💡 *Posibles causas:*\n• WoL desactivado en la BIOS/UEFI\n• El equipo no está conectado por cable Ethernet (WoL por WiFi no es confiable)\n• El firewall bloquea el puerto 22 o el paquete UDP", fmt.Errorf("timeout esperando respuesta del equipo")
+	// 4. Retornar INMEDIATAMENTE sin bloquear la cola del bot (sin time.Sleep)
+	// La confirmación real la dará el bot de la máquina destino al iniciarse (paso 6 de main.go)
+	successMsg := fmt.Sprintf(
+		"✅ *¡Paquete WoL enviado!*\n\n"+
+			"El equipo se está iniciando. Este proceso puede tomar un par de minutos.\n\n"+
+			"💡 *Recibirás una notificación automática en el chat* cuando el sistema esté completamente operativo y el bot se haya iniciado.",
+		s.TargetIP,
+	)
+
+	return successMsg, nil
 }
 
 // isHostAwake verifica si el puerto SSH del equipo está abierto
@@ -97,7 +95,7 @@ func (s *WolService) getMACAddress() (string, error) {
 		}
 	}
 
-	// Expresión regular para encontrar una dirección MAC (ej: aa:bb:cc:dd:ee:ff o aa-bb-cc-dd-ee-ff)
+	// Expresión regular para encontrar una dirección MAC
 	macRegex := regexp.MustCompile(`([0-9a-fA-F]{2}[:-]){5}([0-9a-fA-F]{2})`)
 	match := macRegex.FindString(string(output))
 
@@ -105,7 +103,7 @@ func (s *WolService) getMACAddress() (string, error) {
 		return "", fmt.Errorf("no se encontró la MAC en la tabla ARP. Intenta hacer ping a %s manualmente primero", s.TargetIP)
 	}
 
-	// Normalizar a formato con dos puntos (estándar para net.ParseMAC)
+	// Normalizar a formato con dos puntos
 	match = strings.ReplaceAll(match, "-", ":")
 	return strings.ToLower(match), nil
 }
@@ -117,7 +115,7 @@ func (s *WolService) sendMagicPacket(mac string) error {
 		return fmt.Errorf("MAC inválida: %v", err)
 	}
 
-	// El paquete mágico son 6 bytes de 0xFF seguidos de 16 repeticiones de la MAC (6 + 16*6 = 102 bytes)
+	// El paquete mágico: 6 bytes de 0xFF + 16 repeticiones de la MAC (102 bytes)
 	payload := make([]byte, 0, 102)
 	for i := 0; i < 6; i++ {
 		payload = append(payload, 0xff)
@@ -126,11 +124,10 @@ func (s *WolService) sendMagicPacket(mac string) error {
 		payload = append(payload, macBytes...)
 	}
 
-	// Enviar por broadcast a la dirección 255.255.255.255 en el puerto 9 (o 7)
+	// Enviar por broadcast
 	conn, err := net.Dial("udp", "255.255.255.255:9")
 	if err != nil {
-		// Fallback a broadcast de la red local si el global falla
-		conn, err = net.Dial("udp", "192.168.1.255:9")
+		conn, err = net.Dial("udp", "192.168.1.255:9") // Fallback a broadcast local
 		if err != nil {
 			return fmt.Errorf("no se pudo crear conexión UDP: %v", err)
 		}
