@@ -14,6 +14,7 @@ type WolService struct {
 	TargetIP   string
 	TargetUser string
 	SSHPort    int
+	TargetMAC  string
 	Log        *Log
 }
 
@@ -23,6 +24,7 @@ func NewWolService(config *Config) *WolService {
 		TargetIP:   config.WolTargetIP,
 		TargetUser: config.WolTargetUser,
 		SSHPort:    config.WolSSHPort,
+		TargetMAC:  config.WolTargetMAC,
 		Log:        config.Log,
 	}
 }
@@ -82,30 +84,43 @@ func (s *WolService) isHostAwake() bool {
 
 // getMACAddress obtiene la dirección MAC de la IP usando la tabla ARP del sistema
 func (s *WolService) getMACAddress() (string, error) {
-	// Intentamos con 'ip neigh' (moderno, disponible en Alpine/Linux)
+	// 1. Intentamos con 'ip neigh' (moderno, disponible en Alpine/Linux)
 	cmd := exec.Command("ip", "neigh", "show", s.TargetIP)
 	output, err := cmd.Output()
 
 	if err != nil {
-		// Fallback a 'arp -n' (más antiguo, pero universal)
+		// 2. Fallback a 'arp -n' (más antiguo, pero universal)
 		cmd = exec.Command("arp", "-n", s.TargetIP)
 		output, err = cmd.Output()
 		if err != nil {
-			return "", fmt.Errorf("falló la ejecución de comandos de red: %v", err)
+			// Si falla, limpiamos el output para que el regex falle limpiamente
+			// y pasemos al fallback de configuración
+			output = []byte("")
 		}
 	}
 
-	// Expresión regular para encontrar una dirección MAC
+	// 3. Expresión regular para encontrar una dirección MAC
 	macRegex := regexp.MustCompile(`([0-9a-fA-F]{2}[:-]){5}([0-9a-fA-F]{2})`)
 	match := macRegex.FindString(string(output))
 
-	if match == "" {
-		return "", fmt.Errorf("no se encontró la MAC en la tabla ARP. Intenta hacer ping a %s manualmente primero", s.TargetIP)
+	if match != "" {
+		// Éxito: Normalizar a formato con dos puntos y minúsculas
+		match = strings.ReplaceAll(match, "-", ":")
+		return strings.ToLower(match), nil
 	}
 
-	// Normalizar a formato con dos puntos
-	match = strings.ReplaceAll(match, "-", ":")
-	return strings.ToLower(match), nil
+	// 4. FALLBACK CRÍTICO: Si no se encontró en ARP, usar la MAC configurada en .env
+	if s.TargetMAC != "" {
+		if s.Log != nil {
+			s.Log.Comentario("WARNING", fmt.Sprintf("No se encontró la MAC en la tabla ARP para %s. Usando MAC de respaldo configurada en .env: %s", s.TargetIP, s.TargetMAC))
+		}
+		// Normalizar también la MAC configurada por si el usuario la puso con guiones
+		cleanMAC := strings.ReplaceAll(s.TargetMAC, "-", ":")
+		return strings.ToLower(cleanMAC), nil
+	}
+
+	// 5. Si no hay ARP ni fallback configurado, retornar error
+	return "", fmt.Errorf("no se encontró la MAC en la tabla ARP y no hay una WOL_TARGET_MAC configurada en .env. Intenta hacer ping a %s manualmente primero", s.TargetIP)
 }
 
 // sendMagicPacket construye y envía el paquete WoL por broadcast UDP

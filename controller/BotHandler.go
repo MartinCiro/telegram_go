@@ -4,6 +4,7 @@ package controller
 import (
 	"fmt"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -86,6 +87,26 @@ func (h *BotHandler) Handle(chatID int64, text string) *Response {
 
 	case lower == "/wol" || lower == "🔌":
 		return h.handleWol()
+
+	case strings.HasPrefix(lower, "/tunnel"):
+		// Parsear argumentos: /tunnel [protocolo] [puerto]
+		parts := strings.Fields(text)
+		protocol := "http"
+		port := 8443
+
+		if len(parts) >= 3 {
+			protocol = strings.ToLower(parts[1])
+			port, _ = strconv.Atoi(parts[2]) // Ignoramos error, usará 8443 si no es número
+		} else if len(parts) == 2 {
+			// Si solo pasa un argumento, asumimos que es el puerto
+			if p, err := strconv.Atoi(parts[1]); err == nil {
+				port = p
+			} else {
+				protocol = strings.ToLower(parts[1])
+			}
+		}
+
+		return h.handleTunnelCustom(protocol, port)
 
 	case lower == "/comando" || lower == "💻":
 		h.mu.Lock()
@@ -225,4 +246,13 @@ func (h *BotHandler) handleWol() *Response {
 
 	// Retornar el resultado exitoso directamente
 	return NewResponse(result)
+}
+
+func (h *BotHandler) handleTunnelCustom(protocol string, port int) *Response {
+	err := h.tunnel.StartTunnelCustom(protocol, port)
+	if err != nil {
+		return NewResponse(fmt.Sprintf("❌ *Error:* %v", err))
+	}
+	url := h.tunnel.GetTunnelURL()
+	return NewResponse(fmt.Sprintf("✅ Túnel `%s` activo en `%s`", protocol, url))
 }

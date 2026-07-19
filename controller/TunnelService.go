@@ -271,7 +271,7 @@ func (s *TunnelService) GetTunnelURL() string {
 	if data, err := os.ReadFile(s.UrlFile); err == nil {
 		url := strings.TrimSpace(string(data))
 		if url != "" && s.isProcessRunning() {
-			return url // La URL existe Y el proceso sigue vivo
+			return url
 		}
 	}
 
@@ -315,4 +315,61 @@ func (s *TunnelService) EnsureTunnelRunning() (string, error) {
 	}
 
 	return newUrl, nil
+}
+
+// StartTunnelCustom inicia el túnel con protocolo y puerto personalizados
+func (s *TunnelService) StartTunnelCustom(protocol string, port int) error {
+	// Valores por defecto si no se proporcionan
+	if protocol == "" {
+		protocol = "http"
+	}
+	if port == 0 {
+		port = 8443
+	}
+
+	targetURL := fmt.Sprintf("%s://localhost:%d", protocol, port)
+
+	if s.Log != nil {
+		s.Log.Comentario("INFO", fmt.Sprintf("Iniciando túnel Cloudflare hacia: %s", targetURL))
+	}
+
+	// Detener cualquier instancia previa
+	s.StopTunnel()
+	time.Sleep(2 * time.Second)
+
+	// Limpiar archivos anteriores
+	os.Remove(s.LogFile)
+	os.Remove(s.UrlFile)
+
+	// Comando dinámico
+	cmd := exec.Command("cloudflared", "tunnel", "--url", targetURL)
+
+	// Redirigir salida al archivo de log
+	logFile, err := os.OpenFile(s.LogFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		return fmt.Errorf("error abriendo archivo de log: %v", err)
+	}
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+
+	// Iniciar en segundo plano
+	err = cmd.Start()
+	if err != nil {
+		return fmt.Errorf("error ejecutando cloudflared: %v (¿está instalado?)", err)
+	}
+
+	// Guardar PID
+	pidStr := strconv.Itoa(cmd.Process.Pid)
+	if err := os.WriteFile(s.PidFile, []byte(pidStr), 0644); err != nil {
+		if s.Log != nil {
+			s.Log.Comentario("WARNING", fmt.Sprintf("No se pudo guardar PID: %v", err))
+		}
+	}
+
+	if s.Log != nil {
+		s.Log.Comentario("INFO", fmt.Sprintf("Cloudflared iniciado en segundo plano (PID: %s)", pidStr))
+	}
+
+	// Esperar a que se genere la URL
+	return s.waitForTunnelURL()
 }

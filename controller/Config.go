@@ -21,6 +21,7 @@ type Config struct {
 	WolTargetIP   string
 	WolTargetUser string
 	WolSSHPort    int
+	WolTargetMAC  string
 }
 
 // NewConfig crea una nueva instancia de Config
@@ -71,6 +72,8 @@ func NewConfig() *Config {
 		}
 	}
 
+	wolMAC := os.Getenv("WOL_TARGET_MAC")
+
 	return &Config{
 		TelegramToken: token,
 		TelegramChat:  chatID,
@@ -80,6 +83,7 @@ func NewConfig() *Config {
 		WolTargetIP:   wolIP,
 		WolTargetUser: wolUser,
 		WolSSHPort:    wolPort,
+		WolTargetMAC:  strings.TrimSpace(wolMAC),
 	}
 }
 
